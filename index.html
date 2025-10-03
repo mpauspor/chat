@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Chat → n8n (Railway)</title>
+  <style>
+    :root{--bg:#0b0f19;--card:#12182a;--muted:#94a3b8;--text:#e5e7eb;--accent:#60a5fa;--accent-2:#38bdf8;--danger:#ef4444}
+    *{box-sizing:border-box} body{margin:0;background:radial-gradient(1200px 600px at 10% -10%,#1b2440,transparent),var(--bg);color:var(--text);font:16px/1.4 system-ui,-apple-system,Segoe UI,Roboto,Inter,Ubuntu,Arial}
+    .container{max-width:840px;margin:0 auto;padding:24px}
+    .card{background:linear-gradient(180deg,rgba(255,255,255,.04),rgba(255,255,255,.02));border:1px solid rgba(255,255,255,.08);backdrop-filter:blur(6px);border-radius:16px;box-shadow:0 8px 28px rgba(2,8,23,.35);overflow:hidden}
+    .header{display:flex;align-items:center;gap:12px;padding:16px 18px;border-bottom:1px solid rgba(255,255,255,.08)}
+    .dot{width:10px;height:10px;border-radius:999px;background:linear-gradient(90deg,var(--accent),var(--accent-2))}
+    .title{font-weight:600}
+    .muted{color:var(--muted);font-size:14px}
+    .messages{height:min(60vh,560px);overflow:auto;padding:18px;display:flex;flex-direction:column;gap:12px;scroll-behavior:smooth}
+    .msg{max-width:80%;padding:12px 14px;border-radius:14px;white-space:pre-wrap}
+    .user{align-self:flex-end;background:linear-gradient(180deg,rgba(255,255,255,.07),rgba(255,255,255,.05));border:1px solid rgba(255,255,255,.12)}
+    .bot{align-self:flex-start;background:rgba(96,165,250,.12);border:1px solid rgba(96,165,250,.28)}
+    .error{align-self:center;background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.28);color:#fecaca}
+    .footer{display:flex;gap:10px;padding:14px;border-top:1px solid rgba(255,255,255,.08)}
+    input,button,textarea{font:inherit}
+    .input{flex:1;padding:12px 14px;border-radius:12px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.06);color:var(--text)}
+    .btn{padding:12px 16px;border-radius:12px;border:1px solid rgba(255,255,255,.12);background:linear-gradient(90deg,var(--accent),var(--accent-2));color:#041016;font-weight:700;cursor:pointer}
+    .btn[disabled]{opacity:.6;cursor:not-allowed}
+    .row{display:flex;gap:12px;align-items:center}
+    .pill{font-size:12px;padding:4px 8px;border-radius:999px;background:rgba(148,163,184,.15);border:1px solid rgba(148,163,184,.25)}
+    .small{font-size:12px}
+    a{color:var(--accent)}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="card">
+      <div class="header">
+        <div class="dot"></div>
+        <div>
+          <div class="title">Chat conectado a n8n (vía proxy en Railway)</div>
+          <div class="muted small">Esta web llama a <code>/api/chat</code> en el mismo dominio. El servidor reenvía al webhook de n8n.</div>
+        </div>
+        <div style="margin-left:auto" class="row">
+          <span class="pill small" id="status">Listo</span>
+        </div>
+      </div>
+
+      <div id="messages" class="messages"></div>
+
+      <div class="footer">
+        <input id="input" class="input" placeholder="Escribe tu mensaje…" autocomplete="off" />
+        <button id="send" class="btn">Enviar</button>
+      </div>
+    </div>
+
+    <p class="muted small" style="margin-top:10px">El backend reenvía al webhook de n8n configurado en <code>N8N_WEBHOOK_URL</code> (por defecto: https://iese.app.n8n.cloud/webhook/f406671e-c954-4691-b39a-66c90aa2f103/chat).</p>
+  </div>
+
+  <script>
+    const $ = (s) => document.querySelector(s);
+    const messages = $("#messages");
+    const input = $("#input");
+    const sendBtn = $("#send");
+
+    const SESSION_KEY = "n8n_chat_session";
+    let sessionId = localStorage.getItem(SESSION_KEY) || crypto.randomUUID();
+    localStorage.setItem(SESSION_KEY, sessionId);
+
+    function addMsg(text, who = "bot", cls = "msg"){
+      const div = document.createElement("div");
+      div.className = `${cls} ${who}`;
+      div.textContent = text;
+      messages.appendChild(div);
+      messages.scrollTop = messages.scrollHeight;
+    }
+
+    function extractReply(json){
+      return json?.reply ?? json?.data?.reply ?? JSON.stringify(json);
+    }
+
+    async function send(){
+      const text = input.value.trim();
+      if(!text) return;
+      input.value = "";
+      addMsg(text, "user");
+      sendBtn.disabled = true;
+      try{
+        const res = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message: text, sessionId }),
+        });
+        const json = await res.json();
+        addMsg(String(extractReply(json)), "bot");
+      }catch(err){
+        console.error(err);
+        addMsg("No se pudo contactar con el servidor.", "bot", "msg error");
+      }finally{
+        sendBtn.disabled = false;
+        input.focus();
+      }
+    }
+
+    sendBtn.addEventListener("click", send);
+    input.addEventListener("keydown", (e)=>{ if(e.key === "Enter") send(); });
+
+    addMsg("¡Hola! Escribe algo y lo enviaré a tu workflow de n8n.");
+  </script>
+</body>
+</html>
